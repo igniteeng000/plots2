@@ -14,6 +14,7 @@ class SearchController < ApplicationController
   end
 
   def profiles
+    @search_criteria.sort_by = "recent"
     @profiles = ExecuteSearch.new.by(:profiles, @search_criteria).paginate(page: params[:page], per_page: 20)
   end
 
@@ -28,6 +29,15 @@ class SearchController < ApplicationController
 
   def tags
     @tags = ExecuteSearch.new.by(:tags, @search_criteria).paginate(page: params[:page], per_page: 20)
+  end
+
+  def all_content
+    @nodes = ExecuteSearch.new.by(:all, @search_criteria)
+    @wikis = @nodes[:wikis]
+    @notes = @nodes[:notes]
+    @profiles = @nodes[:profiles]
+    @questions = @nodes[:questions]
+    @tags = @nodes[:tags]
   end
 
   private

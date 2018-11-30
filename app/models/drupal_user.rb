@@ -8,7 +8,6 @@ class DrupalUser < ApplicationRecord
   self.primary_key = 'uid'
 
   has_many :node, foreign_key: 'uid'
-  has_many :drupal_profile_values, foreign_key: 'uid'
   has_many :node_selections, foreign_key: :user_id
   has_many :answers, foreign_key: :uid
   has_many :answer_selections, foreign_key: :user_id
@@ -90,12 +89,12 @@ class DrupalUser < ApplicationRecord
 
   def new_author_contributor
     @uid = uid
-    return "<span class = 'label label-success'><i>New Contributor</i></span>".html_safe if Node.where(:uid => @uid).length === 1
+    return "<a href='/tag/first-time-poster' class='label label-success'><i>new contributor</i></a>".html_safe if Node.where(:uid => @uid).length === 1 && Node.where(:uid => @uid).first.created_at > Date.today - 1.month
   end
 
   def new_contributor
     @uid = id
-    return "<span class = 'label label-success'><i>New Contributor</i></span>".html_safe if Node.where(:uid => @uid).length === 1
+    return "<a href='/tag/first-time-poster' class='label label-success'><i>new contributor</i></a>".html_safe if Node.where(:uid => @uid).length === 1 && Node.where(:uid => @uid).first.created_at > Date.today - 1.month
   end
 
   def likes
@@ -127,10 +126,6 @@ class DrupalUser < ApplicationRecord
       .where(uid: uid)
       .order('changed DESC')
       .first
-  end
-
-  def profile_values
-    drupal_profile_values
   end
 
   def notes

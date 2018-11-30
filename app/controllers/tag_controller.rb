@@ -1,6 +1,6 @@
 class TagController < ApplicationController
   respond_to :html, :xml, :json, :ics
-  before_action :require_user, only: %i(create delete)
+  before_action :require_user, only: %i(create delete add_parent)
 
   def index
     if params[:sort]
@@ -85,6 +85,9 @@ class TagController < ApplicationController
     @node_type = params[:node_type] || default_type
     @start = Time.parse(params[:start]) if params[:start]
     @end = Time.parse(params[:end]) if params[:end]
+    order_by = 'node_revisions.timestamp DESC'
+    order_by = 'node.views DESC' if params[:order] == 'views'
+    order_by = 'node.cached_likes DESC' if params[:order] == 'likes'
 
     node_type = 'note' if @node_type == 'questions' || @node_type == 'note'
     node_type = 'page' if @node_type == 'wiki'
@@ -99,7 +102,7 @@ class TagController < ApplicationController
         .references(:term_data, :node_revisions)
         .where('term_data.name LIKE (?) OR term_data.parent LIKE (?)', params[:id][0..-2] + '%', params[:id][0..-2] + '%')
         .paginate(page: params[:page], per_page: 24)
-        .order('node_revisions.timestamp DESC')
+        .order(order_by)
     else
       @tags = Tag.where(name: params[:id])
 
@@ -115,14 +118,14 @@ class TagController < ApplicationController
           .references(:term_data, :node_revisions)
           .where('term_data.name = ? OR term_data.name = ? OR term_data.parent = ?', params[:id], other_tag, params[:id])
           .paginate(page: params[:page], per_page: 24)
-          .order('node_revisions.timestamp DESC')
+          .order(order_by)
       else
         nodes = Node.where(status: 1, type: node_type)
           .includes(:revision, :tag)
           .references(:term_data, :node_revisions)
           .where('term_data.name = ? OR term_data.parent = ?', params[:id], params[:id])
           .paginate(page: params[:page], per_page: 24)
-          .order('node_revisions.timestamp DESC')
+          .order(order_by)
       end
     end
     nodes = nodes.where(created: @start.to_i..@end.to_i) if @start && @end
@@ -132,6 +135,7 @@ class TagController < ApplicationController
     @answered_questions = []
     @questions&.each { |question| @answered_questions << question if question.answers.any?(&:accepted) }
     @wikis = nodes if @node_type == 'wiki'
+    @wikis ||= []
     @nodes = nodes if @node_type == 'maps'
     @title = params[:id]
     # the following could be refactored into a Tag.contributor_count method:
@@ -198,9 +202,7 @@ class TagController < ApplicationController
       .where(status: 1, type: node_type)
       .paginate(page: params[:page], per_page: 24)
 
-    # breaks the parameter
-    # sets everything to an empty array
-    set_sidebar :tags, [params[:id]]
+    @notes ||= []
 
     @notes = nodes.where('node.nid NOT IN (?)', qids) if @node_type == 'note'
     @questions = nodes.where('node.nid IN (?)', qids) if @node_type == 'questions'
@@ -305,7 +307,7 @@ class TagController < ApplicationController
           CommentMailer.notify_coauthor(user, node)
           node.add_comment(subject: 'co-author',
                            uid: current_user.uid,
-                           body: " @#{current_user.username} has marked #{tagname.split(':')[1]} as a co-author. ")
+                           body: " @#{current_user.username} has marked @#{tagname.split(':')[1]} as a co-author. ")
 
         end
 
@@ -443,6 +445,21 @@ class TagController < ApplicationController
       @tagdata[:notes] = Node.where("nid IN (?) AND type = 'note'", nct.collect(&:nid)).count
     end
     render template: 'tag/contributors-index'
+  end
+
+  def add_parent
+    if current_user.role == 'admin'
+      @tag = Tag.find_by(name: params[:name])
+      @tag.update_attribute('parent', params[:parent])
+      if @tag.save
+        flash[:notice] = "Tag parent added."
+      else
+        flash[:error] = "There was an error adding a tag parent."
+      end
+      redirect_to '/tag/' + @tag.name + '?_=' + Time.now.to_i.to_s
+    else
+      flash[:error] = "Only admins may add tag parents."
+    end
   end
 
   def location
